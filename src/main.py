@@ -3,6 +3,7 @@ import socket
 from flask import Flask, request, g
 from prometheus_flask_exporter import PrometheusMetrics
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 import time
 
 from core.database import engine
@@ -18,9 +19,24 @@ main_logger = setup_logging(
     use_colors=use_colors
 )
 
-# Cria as tabelas no banco de dados
+# Cria as tabelas no banco de dados.
+#
+# create_all roda no IMPORT deste modulo, ou seja, uma vez por worker do
+# gunicorn e uma vez por replica. O checkfirst=True padrao consulta o catalogo
+# antes de criar, mas o par consulta-cria nao e atomico entre processos: com N
+# workers subindo juntos, todos veem "nao existe" e todos tentam criar. O
+# perdedor recebe UniqueViolation em pg_class, o worker morre, e o gunicorn
+# desiste com "Worker failed to boot".
+#
+# Duas defesas: --preload no gunicorn (o import acontece uma vez no master,
+# antes do fork, eliminando a corrida DENTRO do pod) e este tratamento, que
+# cobre a corrida ENTRE replicas. "Ja existe" e exatamente o estado desejado —
+# tratar como erro seria confundir concorrencia com falha.
 main_logger.info("Criando tabelas no banco de dados")
-event_model.Base.metadata.create_all(bind=engine)
+try:
+    event_model.Base.metadata.create_all(bind=engine)
+except (IntegrityError, ProgrammingError) as exc:
+    main_logger.info(f"Schema ja criado por outro processo, seguindo: {exc.__class__.__name__}")
 
 # Cria a aplicação Flask
 app = Flask(__name__, static_folder="static", template_folder="templates")

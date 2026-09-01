@@ -47,4 +47,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"
 
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:8000", "--access-logfile", "-", "main:app"]
+# --preload: importa a aplicacao UMA vez no master, antes do fork. Sem isso,
+# cada worker executa create_all() no import e eles disputam o CREATE TABLE.
+CMD ["gunicorn", "-w", "2", "--preload", "-b", "0.0.0.0:8000", "--access-logfile", "-", "main:app"]

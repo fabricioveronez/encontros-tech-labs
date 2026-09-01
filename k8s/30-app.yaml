@@ -51,8 +51,13 @@ spec:
           command:
             - sh
             - -c
+            # -U explicito e obrigatorio aqui. O securityContext do pod
+            # (runAsUser: 10001) vale tambem para o initContainer, e esse UID
+            # nao existe no /etc/passwd da imagem do Postgres — sem usuario do
+            # SO, o pg_isready nao consegue inferir o usuario padrao e devolve
+            # "no attempt" sem sequer tentar conectar, para sempre.
             - |
-              until pg_isready -h postgres.encontros-tech.svc.cluster.local -p 5432; do
+              until pg_isready -h postgres.encontros-tech.svc.cluster.local -p 5432 -U encontros_tech; do
                 echo "aguardando postgres..."
                 sleep 2
               done
@@ -72,9 +77,15 @@ spec:
           env:
             - name: DATABASE_URL
               valueFrom: { secretKeyRef: { name: encontros-tech-db, key: DATABASE_URL } }
+          # startupProbe da folga para o boot (create_all + gunicorn) sem
+          # afrouxar a liveness depois que a app esta de pe: ate 60s para
+          # iniciar, mas 15s de deteccao em regime.
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 5
+            failureThreshold: 12
           livenessProbe:
             httpGet: { path: /health, port: http }
-            initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet: { path: /ready, port: http }
