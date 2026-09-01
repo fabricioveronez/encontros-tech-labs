@@ -24,7 +24,7 @@ metadata:
     app.kubernetes.io/name: encontros-tech
     app.kubernetes.io/part-of: encontros-tech
   annotations:
-    labs.k8s/commit: "e5b83aa25526e73c2346014a00bfa5cd6577e2f1"
+    labs.k8s/commit: "d2538f38fa787b3953633576213a2e988e117447"
     labs.k8s/source: https://github.com/fabricioveronez/encontros-tech-labs
 spec:
   replicas: 2
@@ -37,7 +37,7 @@ spec:
         app.kubernetes.io/name: encontros-tech
         app.kubernetes.io/part-of: encontros-tech
       annotations:
-        labs.k8s/commit: "e5b83aa25526e73c2346014a00bfa5cd6577e2f1"
+        labs.k8s/commit: "d2538f38fa787b3953633576213a2e988e117447"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -66,7 +66,7 @@ spec:
             limits: { memory: 64Mi }
       containers:
         - name: encontros-tech
-          image: docker.io/fabricioveronez/encontros-tech-labs:e5b83aa
+          image: docker.io/fabricioveronez/encontros-tech-labs:d2538f3
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

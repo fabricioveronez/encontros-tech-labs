@@ -219,7 +219,7 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: encontros-tech-seed-bd76a48
+  name: encontros-tech-seed-d2538f3
   namespace: encontros-tech
   labels:
     app.kubernetes.io/name: encontros-tech-seed
