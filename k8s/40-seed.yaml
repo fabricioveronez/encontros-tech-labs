@@ -226,6 +226,10 @@ metadata:
     app.kubernetes.io/part-of: encontros-tech
 spec:
   backoffLimit: 10
+  # Jobs concluidos nao sao coletados sozinhos, e o nome carrega o SHA do
+  # commit: sem TTL, cada deploy deixa mais um Job Complete no namespace e
+  # o `kubectl get pods` vira ruido que compete com sinal de incidente.
+  ttlSecondsAfterFinished: 1800
   template:
     metadata:
       labels:
