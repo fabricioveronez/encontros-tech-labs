@@ -6,8 +6,10 @@
 # mesmas chamadas de dentro do cluster.
 #
 # A API nao aceita bulk — e um POST por evento, dai o script em Python em vez
-# de um curl unico. NAO e idempotente: o nome do Job e fixo para que um
-# `kubectl apply` repetido nao o reexecute. Para recarregar, apague o Job antes.
+# de um curl unico. O script verifica antes de escrever, entao reexecutar e
+# seguro; e o nome do Job carrega o short SHA porque spec.template de um Job e
+# IMUTAVEL, e um Job de nome fixo cujo script mudou faz o `kubectl apply`
+# falhar com "field is immutable".
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -217,7 +219,7 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: encontros-tech-seed
+  name: encontros-tech-seed-bd76a48
   namespace: encontros-tech
   labels:
     app.kubernetes.io/name: encontros-tech-seed
