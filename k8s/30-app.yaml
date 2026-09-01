@@ -1,0 +1,120 @@
+# encontros-tech (Flask sob gunicorn).
+apiVersion: v1
+kind: Service
+metadata:
+  name: encontros-tech
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/name: encontros-tech
+    app.kubernetes.io/part-of: encontros-tech
+spec:
+  selector:
+    app.kubernetes.io/name: encontros-tech
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: encontros-tech
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/name: encontros-tech
+    app.kubernetes.io/part-of: encontros-tech
+  annotations:
+    labs.k8s/commit: "0f5bbad86f7e576cd9d64189c581ecee20f547df"
+    labs.k8s/source: https://github.com/fabricioveronez/encontros-tech-labs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: encontros-tech
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: encontros-tech
+        app.kubernetes.io/part-of: encontros-tech
+      annotations:
+        labs.k8s/commit: "0f5bbad86f7e576cd9d64189c581ecee20f547df"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      # O create_all() roda no IMPORT do main.py, antes do gunicorn abrir a
+      # porta: sem banco de pe o processo morre no start e o pod entra em
+      # crashloop. Esperar aqui troca isso por um Init:0/1 legivel.
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres.encontros-tech.svc.cluster.local -p 5432; do
+                echo "aguardando postgres..."
+                sleep 2
+              done
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+      containers:
+        - name: encontros-tech
+          image: docker.io/fabricioveronez/encontros-tech-labs:0f5bbad
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: encontros-tech-config
+          env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: encontros-tech-db, key: DATABASE_URL } }
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              # 384Mi com 2 workers gunicorn. O cenario "saturation" reduz este
+              # limite para forcar OOMKilled sob carga.
+              memory: 384Mi
+          volumeMounts:
+            # prometheus_client em modo multiprocess grava um .db por worker.
+            # emptyDir e o certo: precisa ser gravavel e precisa ser LIMPO entre
+            # restarts — arquivos orfaos de workers mortos inflam as metricas.
+            - name: prometheus-multiproc
+              mountPath: /tmp/prometheus_multiproc
+      volumes:
+        - name: prometheus-multiproc
+          emptyDir: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: encontros-tech
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/part-of: encontros-tech
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: encontros.localtest.me
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: encontros-tech
+                port:
+                  number: 80

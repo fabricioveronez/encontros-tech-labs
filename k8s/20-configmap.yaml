@@ -1,0 +1,25 @@
+# Configuracao de runtime do encontros-tech.
+#
+# LOG_FORMAT=simple e explicito de proposito. O default do codigo e "colored",
+# que injeta codigos ANSI no levelname quando o stdout e um tty. Em container
+# o stdout nao e tty, entao na pratica o formatter colorido nao se aplica — mas
+# depender desse detalhe para os logs chegarem limpos ao Loki e fragil.
+#
+# Como as demais, todas estas variaveis tem default no codigo: consumir o
+# ConfigMap por envFrom e o que faz um ConfigMap ausente travar o pod em
+# CreateContainerConfigError em vez de subir silenciosamente errado.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: encontros-tech-config
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/name: encontros-tech
+    app.kubernetes.io/part-of: encontros-tech
+data:
+  APP_TITLE: "Encontros Tech"
+  DEBUG: "False"
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "simple"
+  SERVICE_NAME: "encontros-tech"
+  SERVICE_VERSION: "1.0.0"

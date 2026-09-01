@@ -1,0 +1,8 @@
+# Namespace do encontros-tech.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: encontros-tech
+  labels:
+    app.kubernetes.io/part-of: encontros-tech
+    labs.k8s/project: encontros-tech

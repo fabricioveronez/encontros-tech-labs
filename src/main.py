@@ -1,6 +1,8 @@
 import os
+import socket
 from flask import Flask, request, g
 from prometheus_flask_exporter import PrometheusMetrics
+from sqlalchemy import text
 import time
 
 from core.database import engine
@@ -50,6 +52,44 @@ def after_request(response):
         log_request(main_logger, request.method, request.path, response.status_code)
         main_logger.debug(f"Requisição completada em {duration:.3f}s")
     return response
+
+# Health checks.
+#
+# A aplicacao nao tinha nenhum: o HEALTHCHECK da imagem batia em "/", que
+# renderiza a lista de eventos e consulta o banco. Usar isso como liveness
+# significa que uma oscilacao do Postgres mata os pods em loop — troca um
+# incidente diagnosticavel por um crashloop opaco.
+#
+# A separacao correta e: liveness responde "o processo esta vivo" sem tocar em
+# dependencia externa; readiness responde "consigo atender" e por isso toca.
+#
+# do_not_track evita que as proprias probes inflem as metricas de request —
+# com probe a cada 10s, elas dominariam o histograma de latencia.
+
+@app.route('/health')
+@metrics.do_not_track()
+def health():
+    """Liveness. Nao toca o banco de proposito."""
+    return {
+        'status': 'up',
+        'service': settings.SERVICE_NAME,
+        'version': settings.SERVICE_VERSION,
+        'machine': socket.gethostname(),
+    }, 200
+
+
+@app.route('/ready')
+@metrics.do_not_track()
+def ready():
+    """Readiness. Toca o banco: sem ele a aplicacao nao atende."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text('SELECT 1'))
+    except Exception as exc:
+        main_logger.warning(f"Readiness falhou: {exc}")
+        return {'status': 'not-ready', 'reason': str(exc)}, 503
+    return {'status': 'ready', 'machine': socket.gethostname()}, 200
+
 
 # Importar e registrar blueprints
 from routers import api_router, page_router

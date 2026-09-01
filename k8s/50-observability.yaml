@@ -1,0 +1,88 @@
+# Observabilidade do encontros-tech.
+#
+# prometheus-flask-exporter expoe /metrics na MESMA porta 8000 da aplicacao.
+# As series padrao sao flask_http_request_total e
+# flask_http_request_duration_seconds — prefixo "flask_", diferente das outras
+# duas apps. Alem delas, o main.py registra app_info com a versao.
+#
+# Cuidado ao interpretar: o codigo usa PrometheusMetrics(app) simples, sem
+# MultiProcessCollector, entao com N workers gunicorn cada scrape acerta um
+# worker aleatorio e os contadores serram. Por isso o Dockerfile usa -w 2.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: encontros-tech
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/name: encontros-tech
+    app.kubernetes.io/part-of: encontros-tech
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: encontros-tech
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: encontros-tech
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/part-of: encontros-tech
+spec:
+  groups:
+    - name: encontros-tech.rules
+      rules:
+        - alert: EncontrosTechHighErrorRate
+          expr: |
+            sum(rate(flask_http_request_total{namespace="encontros-tech",status=~"5.."}[5m]))
+              /
+            clamp_min(sum(rate(flask_http_request_total{namespace="encontros-tech"}[5m])), 0.001)
+              > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            project: encontros-tech
+          annotations:
+            summary: "encontros-tech: mais de 5% das respostas sao 5xx"
+
+        - alert: EncontrosTechHighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(flask_http_request_duration_seconds_bucket{namespace="encontros-tech"}[5m]))
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            project: encontros-tech
+          annotations:
+            summary: "encontros-tech: p95 acima de 1s"
+
+        # A app e a candidata natural ao cenario de saturacao: gunicorn com 2
+        # workers e limite apertado chega em OOMKill sob carga.
+        - alert: EncontrosTechOOMKilled
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="encontros-tech"}[15m]) > 0
+              and on (namespace, pod, container)
+            kube_pod_container_status_last_terminated_reason{namespace="encontros-tech",reason="OOMKilled"} == 1
+          for: 1m
+          labels:
+            severity: critical
+            project: encontros-tech
+          annotations:
+            summary: "encontros-tech: {{ $labels.pod }} morto por falta de memoria"
+            description: "Container {{ $labels.container }} terminado com OOMKilled."
+
+        - alert: EncontrosTechDeploymentDegraded
+          expr: |
+            kube_deployment_status_replicas_available{namespace="encontros-tech"}
+              < kube_deployment_spec_replicas{namespace="encontros-tech"}
+          for: 5m
+          labels:
+            severity: critical
+            project: encontros-tech
+          annotations:
+            summary: "encontros-tech: {{ $labels.deployment }} com replicas faltando"

@@ -1,0 +1,91 @@
+# PostgreSQL do encontros-tech.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: encontros-tech-db
+  namespace: encontros-tech
+type: Opaque
+stringData:
+  POSTGRES_DB: encontros_tech
+  POSTGRES_USER: encontros_tech
+  POSTGRES_PASSWORD: encontros-lab-password
+  # A app le uma URL unica (DATABASE_URL), nao variaveis separadas como as
+  # outras duas. Montada aqui para nao repetir a senha em dois lugares.
+  DATABASE_URL: postgresql://encontros_tech:encontros-lab-password@postgres.encontros-tech.svc.cluster.local:5432/encontros_tech
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: encontros-tech
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: encontros-tech
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: encontros-tech
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres
+        app.kubernetes.io/part-of: encontros-tech
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom: { secretKeyRef: { name: encontros-tech-db, key: POSTGRES_DB } }
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: encontros-tech-db, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: encontros-tech-db, key: POSTGRES_PASSWORD } }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "encontros_tech", "-d", "encontros_tech"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "encontros_tech", "-d", "encontros_tech"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
