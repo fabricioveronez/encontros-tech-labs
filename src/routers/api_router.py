@@ -10,6 +10,25 @@ from core.database import get_db
 from core.logging import get_logger, log_business_event
 
 logger = get_logger("api_router")
+
+
+def _serialize(event) -> dict:
+    """Converte o modelo SQLAlchemy para dict serializavel em JSON.
+
+    O codigo original chamava event.model_dump() direto no objeto do
+    SQLAlchemy, que nao tem esse metodo — model_dump e do Pydantic. O
+    resultado era AttributeError capturado pelo except generico e devolvido
+    como 500: TODA a API JSON respondia 500, em qualquer rota, sempre.
+
+    O schema Event ja declara from_attributes = True exatamente para essa
+    conversao. mode="json" e necessario porque o campo date e datetime e o
+    jsonify do Flask nao serializa datetime sozinho.
+
+    technologies nao e persistido (ver o comentario em event_service.
+    create_event); em objetos vindos do banco o atributo nao existe e o
+    Pydantic usa o default [].
+    """
+    return Event.model_validate(event).model_dump(mode="json")
 bp = Blueprint('api', __name__)
 
 @bp.route("/", methods=['POST'])
@@ -31,7 +50,7 @@ def create_event():
                 "method": "API"
             })
             
-            return jsonify(result.model_dump())
+            return jsonify(_serialize(result))
             
     except ValueError as e:
         logger.warning(f"Erro de validação na criação do evento: {str(e)}")
@@ -60,7 +79,7 @@ def read_events():
                 "method": "API"
             })
             
-            return jsonify([event.model_dump() for event in events])
+            return jsonify([_serialize(event) for event in events])
             
     except Exception as e:
         logger.error(f"Erro ao listar eventos: {str(e)}")
@@ -80,7 +99,7 @@ def get_event_by_token(edit_token: str):
                 "method": "API"
             })
             
-            return jsonify(result.model_dump())
+            return jsonify(_serialize(result))
             
     except EventNotFoundError:
         logger.warning(f"Evento não encontrado para token: {edit_token[:8]}...")
@@ -108,7 +127,7 @@ def update_event(edit_token: str):
                 "method": "API"
             })
             
-            return jsonify(result.model_dump())
+            return jsonify(_serialize(result))
             
     except EventNotFoundError:
         logger.warning(f"Evento não encontrado para atualização: {edit_token[:8]}...")

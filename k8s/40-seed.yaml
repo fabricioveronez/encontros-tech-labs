@@ -41,6 +41,8 @@ data:
         raise SystemExit("encontros-tech nao ficou ready a tempo")
 
     eventos = json.load(open("/seed/eventos.json", encoding="utf-8"))
+    criados = 0
+    recusados = 0
     for evento in eventos:
         payload = json.dumps(evento).encode("utf-8")
         req = urllib.request.Request(
@@ -51,13 +53,22 @@ data:
         )
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
+                criados += 1
                 print(f"criado ({r.status}): {evento['title']}", flush=True)
         except urllib.error.HTTPError as exc:
-            # Nao aborta o seed inteiro por causa de um evento recusado: o
-            # resultado parcial e mais util que nenhum, e o motivo fica no log.
+            # Um evento recusado nao aborta o seed — resultado parcial e mais
+            # util que nenhum, e o motivo fica no log.
+            recusados += 1
             print(f"recusado ({exc.code}): {evento['title']} -> {exc.read()[:200]}", flush=True)
 
-    print(f"seed concluido: {len(eventos)} eventos processados", flush=True)
+    # Mas TODOS recusados e falha, e precisa falhar alto. A versao anterior
+    # deste Job terminava "Completed" com zero eventos criados enquanto a API
+    # devolvia 500 em toda chamada — um seed que mente e pior que um seed que
+    # quebra, porque o ambiente parece pronto e nao esta.
+    if criados == 0:
+        raise SystemExit(f"seed falhou: 0 de {len(eventos)} eventos criados")
+
+    print(f"seed concluido: {criados} criado(s), {recusados} recusado(s)", flush=True)
   eventos.json: |
     [
       {
