@@ -119,7 +119,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: encontros.localtest.me
+    - host: encontros.192.168.1.10.nip.io
       http:
         paths:
           - path: /
